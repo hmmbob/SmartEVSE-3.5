@@ -1143,14 +1143,34 @@ input[type=submit]:hover{background:#45a049}
 )EOF";
 
 
+// Maximum concurrent HTTP connections to prevent socket exhaustion
+#define MAX_HTTP_CONNECTIONS 8
+
+// Count active connections in the manager
+static int countConnections(struct mg_mgr *mgr) {
+  int n = 0;
+  for (struct mg_connection *t = mgr->conns; t != NULL; t = t->next) n++;
+  return n;
+}
+
 // Connection event handler function
 // indenting lower level two spaces to stay compatible with old StartWebServer
 // We use the same event handler function for HTTP and HTTPS connections
 // fn_data is NULL for plain HTTP, and non-NULL for HTTPS
 static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
-  if (ev == MG_EV_ACCEPT && c->fn_data != NULL) {
+  if (ev == MG_EV_ACCEPT) {
+    // Limit concurrent connections to prevent socket exhaustion
+    int nconns = countConnections(c->mgr);
+    if (nconns > MAX_HTTP_CONNECTIONS) {
+      _LOG_W("Too many connections (%d), rejecting new connection\n", nconns);
+      c->is_closing = 1;  // Immediately close the connection
+      return;
+    }
+    // Initialize TLS for HTTPS connections (fn_data != NULL)
+    if (c->fn_data != NULL) {
     struct mg_tls_opts opts = { .ca = empty, .cert = mg_unpacked("/data/cert.pem"), .key = mg_unpacked("/data/key.pem"), .name = empty, .skip_verification = 0};
     mg_tls_init(c, &opts);
+    }
   } else if (ev == MG_EV_CLOSE) {
     if (c == HttpListener80) {
         _LOG_A("Free HTTP port 80");
