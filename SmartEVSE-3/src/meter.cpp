@@ -6,6 +6,7 @@
 extern unsigned long pow_10[10];
 extern void CalcIsum(void);
 extern void RecomputeSoC(void);
+extern void request_write_settings(void);
 
 #define ENDIANESS_LBF_LWF 0
 #define ENDIANESS_LBF_HWF 1
@@ -216,7 +217,7 @@ uint8_t Meter::receiveCurrentMeasurement(ModBus MB) {
                 if (SB2_WIFImode == 2 && SB2.WiFiConnected && !SubMenu) {
                     SB2_WIFImode = 1;                                       // Portal active and connected? Switch back to Enabled.
 #ifdef SMARTEVSE_VERSION //ESP32
-                    write_settings();
+                    request_write_settings();
 #else //CH32
                     printf("@write_settings\n");
 #endif

@@ -645,13 +645,7 @@ void setMode(uint8_t NewMode) {
 
 
     //make mode and start/stoptimes persistent on reboot
-    if (preferences.begin("settings", false) ) {                        //false = write mode
-        preferences.putUChar("Mode", Mode);
-        preferences.putULong("DelayedStartTim", DelayedStartTime.epoch2); //epoch2 only needs 4 bytes
-        preferences.putULong("DelayedStopTime", DelayedStopTime.epoch2);   //epoch2 only needs 4 bytes
-        preferences.putUShort("DelayedRepeat", DelayedRepeat);
-        preferences.end();
-    }
+    request_write_settings();
 #else //CH32
     printf("@Mode:%u.\n", NewMode); //a
     _LOG_V("[<-] Mode:%u\n", NewMode);
@@ -982,12 +976,8 @@ void setAccess(AccessStatus_t Access) { //c
         else if (State != STATE_C1 && (State == STATE_B || State == STATE_MODEM_REQUEST || State == STATE_MODEM_WAIT || State == STATE_MODEM_DONE || State == STATE_MODEM_DENIED)) setState(STATE_B1);
     }
 
-    //make mode and start/stoptimes persistent on reboot
-    if (preferences.begin("settings", false) ) {                        //false = write mode
-        preferences.putUChar("Access", AccessStatus);
-        preferences.putUShort("CardOffs16", CardOffset);
-        preferences.end();
-    }
+    //make AccessStatus and CardOffset persistent on reboot
+    request_write_settings();
 
 #if MQTT
     // Update MQTT faster
