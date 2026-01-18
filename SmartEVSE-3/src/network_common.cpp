@@ -890,23 +890,19 @@ void setTimeZone(void * parameter) {
 String homeWizardHost;
 HTTPClient* homeWizardHttpClient=nullptr;
 bool homeWizardHttpClientInitialized = false;
+static bool mdnsDiscoveryInProgress = false;            // True when async mDNS task is running
+static unsigned long lastMdnsQueryTime = 0;             // Last time mDNS query was attempted
+static const unsigned long MDNS_RETRY_INTERVAL = 30000; // Retry mDNS discovery every 30 seconds if not found
 
 /**
- * @brief Discovers a HomeWizard P1 meter service on the local network.
- *
- * This function uses mDNS to search for services advertising "_hwenergy._tcp" on the local network.
- *
- * @return A string containing the hostname and port of the first matching HomeWizard P1 meter service
- * or an empty string in case no HomeWizard P1 meter is found in the local network
+ * @brief FreeRTOS task that performs mDNS discovery in the background.
+ * 
+ * This task runs the blocking mDNS query without blocking the main loop.
+ * When complete, it updates homeWizardHost and deletes itself.
  */
-String discoverHomeWizardP1() {
-
-    // If there's a cached result, return it immediately
-    if (!homeWizardHost.isEmpty()) {
-        _LOG_A("discoverHWP1(): Using cached host '%s'.\n", homeWizardHost.c_str());
-        return homeWizardHost;
-    }
-
+void mdnsDiscoveryTask(void* parameter) {
+    _LOG_A("mDNS discovery task started\n");
+    
     // Search for _hwenergy._tcp services.
     // https://api-documentation.homewizard.com/docs/discovery/
     const int n = MDNS.queryService("hwenergy", "tcp");
@@ -922,14 +918,71 @@ String discoverHomeWizardP1() {
                 _LOG_A("discoverHWP1(): Found HWP1 service: %s.local (%s:%d)\n", hostname.c_str(),
                        MDNS.IP(i).toString().c_str(), port);
 
-                // Return first match.
-                // Cache the result before returning it
+                // Cache the result
                 homeWizardHost = hostname + ".local" + (port != 80 ? ":" + String(port) : "");
-                return homeWizardHost;
+                break;
             }
         }
-        _LOG_A("discoverHWP1(): No matching HWP1 service found.\n");
+        if (homeWizardHost.isEmpty()) {
+            _LOG_A("discoverHWP1(): No matching HWP1 service found.\n");
+        }
     }
+    
+    mdnsDiscoveryInProgress = false;
+    _LOG_A("mDNS discovery task completed\n");
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Starts async mDNS discovery for HomeWizard P1 meter.
+ *
+ * This function uses mDNS to search for services advertising "_hwenergy._tcp" on the local network.
+ * This function spawns a background task to perform the blocking mDNS query,
+ * so the main loop remains responsive. The result is cached in homeWizardHost.
+ *
+ * @return The cached hostname if available, empty string if discovery is pending or not found
+ */
+String discoverHomeWizardP1() {
+
+    // If there's a cached result, return it immediately
+    if (!homeWizardHost.isEmpty()) {
+        _LOG_D("discoverHWP1(): Using cached host '%s'.\n", homeWizardHost.c_str());
+        return homeWizardHost;
+    }
+
+    // If discovery is already in progress, don't start another
+    if (mdnsDiscoveryInProgress) {
+        _LOG_D("discoverHWP1(): Discovery already in progress.\n");
+        return "";
+    }
+
+    // Rate limit discovery attempts
+    unsigned long now = millis();
+    if (lastMdnsQueryTime != 0 && (now - lastMdnsQueryTime) < MDNS_RETRY_INTERVAL) {
+        // Still in cooldown period, skip mDNS query
+        return "";
+    }
+    lastMdnsQueryTime = now;
+    
+    // Start async mDNS discovery task
+    mdnsDiscoveryInProgress = true;
+    _LOG_A("discoverHWP1(): Starting async mDNS discovery (next retry in %lu seconds)...\n", MDNS_RETRY_INTERVAL / 1000);
+    
+    // Create task with 4KB stack, priority 1 (low), running on any core
+    BaseType_t result = xTaskCreate(
+        mdnsDiscoveryTask,      // Task function
+        "mDNS_HWP1",            // Task name
+        4096,                   // Stack size (bytes)
+        NULL,                   // Parameters
+        1,                      // Priority (low)
+        NULL                    // Task handle (not needed)
+    );
+    
+    if (result != pdPASS) {
+        _LOG_A("discoverHWP1(): Failed to create mDNS discovery task!\n");
+        mdnsDiscoveryInProgress = false;
+    }
+    
     return "";
 }
 
@@ -973,6 +1026,13 @@ std::pair<int8_t, std::array<std::int16_t, 3> > getMainsFromHomeWizardP1() {
         delete homeWizardHttpClient;
         homeWizardHttpClient = nullptr;
         homeWizardHttpClientInitialized = false;
+        // Clear cached hostname on connection errors so we can rediscover
+        // (e.g., if the HomeWizard P1 got a new IP address)
+        if (httpCode < 0) {
+            homeWizardHost = "";
+            lastMdnsQueryTime = 0;  // Allow immediate rediscovery
+            _LOG_A("getMainsFromHWP1(): Connection failed, clearing cache for rediscovery.\n");
+        }
         return {false, {0, 0, 0}};
     }
 
