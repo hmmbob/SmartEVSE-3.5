@@ -594,7 +594,6 @@ void mqtt_receive_callback(const String topic, const String payload) {
             setOverrideCurrent(0);
             setMode(MODE_SOLAR);
         } else if (payload == "Smart") {
-            setOverrideCurrent(0);
             setMode(MODE_SMART);
         } else if (payload == "Pause") {
             setAccess(PAUSE);
