@@ -207,8 +207,11 @@ void MQTTclient_t::announce(const String& entity_name, const String& domain, con
     default_entity_id.replace("-", "_");
 
     const String config_url = "http://" + WiFi.localIP().toString();
+#ifndef SENSORBOX_VERSION
     const String device_payload = String(R"("device": {)") + jsn("model","SmartEVSE v3") + jsna("identifiers", MQTTprefix) + jsna("name", MQTTprefix) + jsna("manufacturer","Stegen") + jsna("configuration_url", config_url) + jsna("sw_version", String(VERSION)) + "}";
-
+#else
+    const String device_payload = String(R"("device": {)") + jsn("model","Sensorbox v2") + jsna("identifiers", MQTTprefix) + jsna("name", MQTTprefix) + jsna("manufacturer","Stegen") + jsna("configuration_url", config_url) + jsna("sw_version", String(VERSION)) + "}";
+#endif
     String payload = "{"
         + jsn("name", entity_name)
         + jsna("object_id", String(MQTTprefix + "-" + entity_suffix))  // Deprecated for HA 2026.4 - still setting for backwards compatibility. Will not raise error if new default_entity_id is also set: https://github.com/home-assistant/core/pull/151996
@@ -224,6 +227,7 @@ void MQTTclient_t::announce(const String& entity_name, const String& domain, con
 
 MQTTclient_t MQTTclient;
 
+#ifndef SENSORBOX_VERSION
 // SmartEVSE server MQTT client implementation
 MQTTclientSmartEVSE_t MQTTclientSmartEVSE;
 bool MQTTclientSmartEVSE_AppConnected = false;  // Track if app is connected
@@ -346,6 +350,8 @@ void MQTTclientSmartEVSE_t::subscribe(const String &topic, int qos) {
     if (connected && client)
         esp_mqtt_client_subscribe(client, topic.c_str(), qos);
 }
+#endif  // SENSORBOX_VERSION
+
 #endif
 
 #endif
@@ -1192,7 +1198,13 @@ input[type=submit]:hover{background:#45a049}
 </head>
 <body><form action="/save" method="POST">
 <h2>WiFi Setup</h2>
-<small>SmartEVSE only connects to 2.4 GHz networks.</small>
+)EOF"
+#ifdef SENSORBOX_VERSION
+"<small>Sensorbox only connects to 2.4 GHz networks.</small>"
+#else
+"<small>SmartEVSE only connects to 2.4 GHz networks.</small>"
+#endif
+R"EOF(
 <label>SSID:</label>
 <input type="text" name="ssid" required minlength="1" maxlength="32" pattern="[ -~]{1,32}" title="SSID must be 1-32 printable characters">
 <label>Password:</label>
@@ -1258,7 +1270,9 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
               preferences.clear();
               preferences.end();       
             }
+#ifndef SENSORBOX_VERSION
             DeleteAllRFID();                                      // All RFID UIDs
+#endif            
             shouldReboot = true;
             mg_http_reply(c, 200, "Content-Type: text/plain\r\n", "Erasing settings, rebooting");
         } else if (mg_http_match_uri(hm, "/") && WIFImode == 2) { // serve AP page to fill in WIFI credentials
@@ -1579,7 +1593,7 @@ void timeSyncCallback(struct timeval *tv)
     // which is a blocking TCP send. This deadlocks because lwIP is waiting for this callback
     // to return while the TCP send needs lwIP to process packets.
     _LOG_A("Synced clock to NTP server!");
-#if MQTT && MQTT_ESP
+#if MQTT && MQTT_ESP && SMARTEVSE_VERSION 
     // Start SmartEVSE MQTT connection after time is synced (TLS requires correct time for certificate validation)
     // Only connect on first sync - subsequent syncs should not restart the MQTT connection!
     if (!LocalTimeSet) {
@@ -1643,8 +1657,10 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 #else
             if (MQTTHost != "")
                 esp_mqtt_client_start(MQTTclient.client);
+#ifdef SMARTEVSE_VERSION                
             if (MQTTSmartServer && MQTTclientSmartEVSE.client)
                 esp_mqtt_client_start(MQTTclientSmartEVSE.client);
+#endif
 #endif
 #endif //MQTT
             mg_log_set(MG_LL_NONE);
@@ -1699,7 +1715,7 @@ void handleWIFImode() {
         // Start WiFi as AP
         WiFi.softAP("SmartEVSE-config", APpassword);
 #else
-        APpassword = "0123456789abcdef";
+        APpassword = "12345678";
         WiFi.softAP("Sensorbox-config", APpassword);
 #endif
         IPAddress IP = WiFi.softAPIP();
@@ -1879,7 +1895,7 @@ void WiFiSetup(void) {
 void network_loop() {
     static unsigned long lastCheck_net = 0;
 
-#if MQTT && MQTT_ESP
+#if MQTT && MQTT_ESP && SMARTEVSE_VERSION
     // Handle SmartEVSE MQTT server setting change (set by LCD menu)
     // This runs in main loop context where MQTT operations are safe
     if (MQTTSmartServerChanged) {
