@@ -72,6 +72,7 @@ uint32_t serialnr = 0;
 // The following data will be updated by eeprom/storage data at powerup:
 uint8_t WIFImode = WIFI_MODE;                                               // WiFi Mode (0:Disabled / 1:Enabled / 2:Start Portal)
 String TZinfo = "";                                                         // contains POSIX time string
+String TZname = "";                                                         // contains timezone name (e.g. Europe/Amsterdam)
 
 char *downloadUrl = NULL;
 int downloadProgress = 0;
@@ -148,7 +149,10 @@ void MQTTclient_t::connect(void) {
 
     client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, (esp_mqtt_event_id_t) ESP_EVENT_ANY_ID, (esp_event_handler_t) mqtt_event_handler, NULL);
-    esp_mqtt_client_start(client);
+    // Start now if WiFi already connected, otherwise WiFi event handler will start it
+    if (WiFi.isConnected()) {
+        esp_mqtt_client_start(client);
+    }
 }
 
 void MQTTclient_t::disconnect(void) {
@@ -810,45 +814,13 @@ void setTimeZone(void * parameter) {
         httpClient.end();
         vTaskDelete(NULL);                                                      //end this task so it will not take up resources
     };
-    // lookup current timezone
-    httpClient.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    String host[2] = { "http://worldtimeapi.org/api/ip", "http://ip-api.com/json"};
-    int httpCode;
-    for (int i=0; i<15; i++) {
-        httpClient.begin(host[i%2]);
-        httpCode = httpClient.GET();  //Make the request
-        // only handle 200/301, fail on everything else
-        if ( httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY ) { //fail
-            httpClient.end();
-            _LOG_A("Error on HTTP request (httpCode=%i), host=%s, try=%i.\n", httpCode, host[i%2].c_str(), i);
-            delay(1000);
-        } else {
-            break;
-        }
-    }
 
-    // only handle 200/301, fail on everything else
-    if( httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY ) {
-        _LOG_A("Error on HTTP request (httpCode=%i)\n", httpCode);
+    // Check if browser timezone was saved during WiFi setup
+    if (TZname == "") {
+        _LOG_A("No browser timezone available.\n");
         onErrorCloseTask();
     }
-
-    // The filter: it contains "true" for each value we want to keep
-    DynamicJsonDocument  filter(16);
-    filter["timezone"] = true;
-    DynamicJsonDocument doc2(80);
-    DeserializationError error = deserializeJson(doc2, httpClient.getStream(), DeserializationOption::Filter(filter));
-    if (error) {
-        _LOG_A("deserializeJson() failed: %s\n", error.c_str());
-        onErrorCloseTask();
-    }
-    String tzname = doc2["timezone"];
-    if (tzname == "") {
-        _LOG_A("Could not detect Timezone.\n");
-        onErrorCloseTask();
-    }
-    httpClient.end();
-    _LOG_A("Timezone detected: tz=%s.\n", tzname.c_str());
+    _LOG_A("Using browser timezone: %s\n", TZname.c_str());
 
     // takes TZname (format: Europe/Berlin) , gets TZ_INFO (posix string, format: CET-1CEST,M3.5.0,M10.5.0/3) and sets and stores timezonestring accordingly
     //httpClient.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -857,7 +829,7 @@ void setTimeZone(void * parameter) {
     char *URL;
     asprintf(&URL, "%s/zones.csv", FW_DOWNLOAD_PATH); //will be freed
     httpClient.begin(URL);
-    httpCode = httpClient.GET();  //Make the request
+    int httpCode = httpClient.GET();  //Make the request
 
     // only handle 200/301, fail on everything else
     if( httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY ) {
@@ -869,10 +841,10 @@ void setTimeZone(void * parameter) {
     stream = httpClient.getStreamPtr();
     while(httpClient.connected() && stream->available()) {
         l = stream->readStringUntil('\n');
-        if (l.indexOf(tzname) > 0) {
+        if (l.indexOf(TZname) > 0) {
             int from = l.indexOf("\",\"") + 3;
             TZinfo = l.substring(from, l.length() - 1);
-            _LOG_A("Detected Timezone info: TZname = %s, tz_info=%s.\n", tzname.c_str(), TZinfo.c_str());
+            _LOG_A("Detected Timezone info: TZname = %s, tz_info=%s.\n", TZname.c_str(), TZinfo.c_str());
             setenv("TZ",TZinfo.c_str(),1);
             tzset();
             if (preferences.begin("settings", false) ) {
@@ -883,7 +855,7 @@ void setTimeZone(void * parameter) {
         }
     }
     if (TZinfo == "") {
-        _LOG_A("Could not find TZname %s in zones.csv.\n", tzname.c_str());
+        _LOG_A("Could not find TZname %s in zones.csv.\n", TZname.c_str());
         FREE(URL);
         onErrorCloseTask();
     }
@@ -1194,7 +1166,8 @@ input[type=text],input[type=password]{width:100%;padding:8px;font-size:14px;bord
 input[type=submit]{width:100%;padding:8px;font-size:14px;background:#4CAF50;color:#fff;border:0;cursor:pointer}
 input[type=submit]:hover{background:#45a049}
 @media (max-width:600px){form{width:95%}}</style>
-<script>function togglePassword(){var x=document.getElementById('password');x.type=x.type==='password'?'text':'password'}</script>
+<script>function togglePassword(){var x=document.getElementById('password');x.type=x.type==='password'?'text':'password'}
+window.onload=function(){document.getElementById('tz').value=Intl.DateTimeFormat().resolvedOptions().timeZone}</script>
 </head>
 <body><form action="/save" method="POST">
 <h2>WiFi Setup</h2>
@@ -1210,6 +1183,7 @@ R"EOF(
 <label>Password:</label>
 <input type="password" name="password" id="password" required minlength="8" maxlength="63" pattern="[ -~]{8,63}" title="Password must be 8-63 printable characters">
 <label><input type="checkbox" onclick="togglePassword()">Show Password</label>
+<input type="hidden" name="tz" id="tz">
 <input type="submit" value="Save">
 </form></body></html>
 )EOF";
@@ -1279,11 +1253,27 @@ static void fn_http_server(struct mg_connection *c, int ev, void *ev_data) {
             mg_http_reply(c, 200, "Content-Type: text/html\r\n", "%s", html_form);
         // save WiFi credentials, make sure we are still in WiFiPortal mode    
         } else if (mg_http_match_uri(hm, "/save") && WIFImode == 2) {
-            char ssid[33], password[64];
+            char ssid[33], password[64], tz[64];
             bool has_ssid = mg_http_get_var(&hm->body, "ssid", ssid, sizeof(ssid)) > 0;
             bool has_pass = mg_http_get_var(&hm->body, "password", password, sizeof(password)) > 0;
+            mg_http_get_var(&hm->body, "tz", tz, sizeof(tz));  // Timezone
             if (has_ssid && has_pass) {
-                mg_http_reply(c, 200, "Content-Type: text/html\r\n", "<html><body><h2>Saved! Rebooting...</h2></body></html>");
+                // Store timezone name if provided (will be converted to TZ_INFO on next boot)
+                if (tz[0]) {
+                    TZname = tz;
+                    if (preferences.begin("settings", false)) {
+                        preferences.putString("TZname", TZname);
+                        preferences.end();
+                    }
+                    _LOG_A("Browser timezone saved: %s\n", tz);
+                }
+                mg_http_reply(c, 200, "Content-Type: text/html\r\n",
+                    "<!DOCTYPE html><html><head><title>Saved</title>"
+                    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                    "<style>body{font-family:Arial;padding:20px;text-align:center}</style></head>"
+                    "<body><h2>Saved!</h2><p>Connecting to <b>%s</b></p>"
+                    "<p>Access at: <b>http://%s.local</b></p><p>Rebooting...</p></body></html>",
+                    ssid, APhostname.c_str());
                 _LOG_A("Connecting to wifi network.\n");
                 WiFi.begin(ssid, password);                         // Configure Wifi with credentials
                 WIFImode = 1;                                       // we are already connected so don't call handleWIFImode
@@ -1655,7 +1645,7 @@ void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
                MQTTtimer = mg_timer_add(&mgr, 3000, MG_TIMER_REPEAT | MG_TIMER_RUN_NOW, timer_fn, &mgr);
             }
 #else
-            if (MQTTHost != "")
+            if (MQTTHost != "" && MQTTclient.client)
                 esp_mqtt_client_start(MQTTclient.client);
 #ifdef SMARTEVSE_VERSION                
             if (MQTTSmartServer && MQTTclientSmartEVSE.client)
@@ -1737,6 +1727,7 @@ void handleWIFImode() {
 
     if (WIFImode == 0 && WiFi.getMode() != WIFI_OFF) {
         _LOG_A("Stopping WiFi..\n");
+        WiFi.softAPdisconnect(true);
         WiFi.disconnect(true);
     }    
 }
@@ -1863,6 +1854,7 @@ void WiFiSetup(void) {
 
     if (preferences.begin("settings", false) ) {
         TZinfo = preferences.getString("TimezoneInfo","");
+        TZname = preferences.getString("TZname","");
         if (TZinfo != "") {
             setenv("TZ",TZinfo.c_str(),1);
             tzset();
