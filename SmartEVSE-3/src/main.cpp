@@ -1736,6 +1736,7 @@ printf("@MSG: DINGO State=%d, pilot=%d, AccessTimer=%d, PilotDisconnected=%d.\n"
             setErrorFlags(CT_NOCOMM);
             setStatePowerUnavailable();
             SB2.SoftwareVer = 0;
+            SB2.WIFImodeSynced = 0;         // Allow SB2 to be reconnected / resynced.
             _LOG_W("Error, MainsMeter communication error!\n");
         } else {
             if (MainsMeter.Timeout) MainsMeter.Timeout--;

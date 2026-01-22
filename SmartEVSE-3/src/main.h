@@ -332,6 +332,7 @@ struct Sensorbox {
     uint8_t WiFiConnected;      // 0:not connected / 1:connected to WiFi
     uint8_t WiFiAPSTA;          // 0:no portal /  1: portal active
     uint8_t WIFImode;           // 0:Wifi Off / 1:WiFi On / 2: Portal Start
+    uint8_t WIFImodeSynced;     // 0:not synced / 1:synced (first read done)
     uint8_t IP[4];
     uint8_t APpassword[9];      // 8 characters + null termination
 };
