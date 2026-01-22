@@ -470,17 +470,14 @@ void GLCD(void) {
 
             } else if (SB2_WIFImode == 2) {         // Enable Portal on Sensorbox 2
                 if (SubMenu) {
-                    sprintf(Str, "O button starts config");
+                    sprintf(Str, "O button starts portal");
                     GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
                 } else {
                     // Show Portal Password
-                    sprintf(Str, "Password: %s", SB2.APpassword);
-                    GLCD_write_buf_str(0, 0, Str, GLCD_ALIGN_LEFT);
-                    GLCD_sendbuf(7, 1);
-                    GLCD_buffer_clr();
-                    sprintf(Str, "Now connect to portal");
-                    GLCD_write_buf_str(0, 0, Str, GLCD_ALIGN_LEFT);
+                    sprintf(Str, "Portal PW: %s", SB2.APpassword);
+                    GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
                 }
+                LCDTimer = 0;                                                       // reset timer, so it will not exit the menu when setting up WiFi
             }        
         // Show extra Contactor 2 information on top row
         } else if (LCDNav == MENU_C2 && SubMenu) {
@@ -514,10 +511,7 @@ void GLCD(void) {
                     sprintf(Str, "O button starts portal");
                     GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
                 } else {
-                    // Show Access Point password
-                    //sprintf(Str, "AP:SmartEVSE-config");
-                    //GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
-                    sprintf(Str, "Portal PW:%s", APpassword.c_str());
+                    sprintf(Str, "Portal PW: %s", APpassword.c_str());
                     GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
                 }
                 LCDTimer = 0;                                                   // reset timer, so we will not exit the menu while setting up WiFi
@@ -1141,7 +1135,7 @@ uint8_t getMenuItems (void) {
             MenuItems[m++] = MENU_MAINSMETER;                                   // - - Type of Mains electric meter (0: Disabled / Constants EM_*)
             if (MainsMeter.Type == EM_SENSORBOX) {                              // - - ? Sensorbox?
                 if (GridActive == 1) MenuItems[m++] = MENU_GRID;
-                if (SB2.SoftwareVer == 0x01) {
+                if (SB2.SoftwareVer == 0x01 || SB2.SoftwareVer == 0x03) {
                     MenuItems[m++] = MENU_SB2_WIFI;                             // Sensorbox-2 Wifi  0:Disabled / 1:Enabled / 2:Portal
                 }
             } else if (MainsMeter.Type && MainsMeter.Type != EM_API && MainsMeter.Type != EM_HOMEWIZARD_P1) { // - - ? Other?
