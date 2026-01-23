@@ -870,7 +870,7 @@ void setState(uint8_t NewState) { //c
 #ifdef SMARTEVSE_VERSION //v3
             timerAlarmWrite(timerA, PWM_95, false);                             // Enable Timer alarm, set to diode test (95%)
 #endif
-            SetCurrent(ChargeCurrent);                                          // Enable PWM
+
 #ifndef SMARTEVSE_VERSION //CH32
             TIM1->CH4CVR = PWM_96;                                              // start ADC sampling at 96% (Diode Check)
 #endif
@@ -3138,7 +3138,7 @@ void Timer10ms_singlerun(void) {
                     BalancedMax[0] = ChargeCurrent;
                     if (IsCurrentAvailable()) {
 
-                        Balanced[0] = 0;                                    // For correct baseload calculation set current to zero
+                        Balanced[0] = MinCurrent * 10;                      // Set Balanced[0] to MinCurrent (baseload calc might be off briefly)
                         CalcBalancedCurrent(1);                             // Calculate charge current for all connected EVSE's
                         DiodeCheck = 0;                                     // (local variable)
                         setState(STATE_C);                                  // switch to STATE_C
