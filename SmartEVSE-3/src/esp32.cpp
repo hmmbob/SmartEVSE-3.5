@@ -2605,6 +2605,11 @@ void ocppInit() {
     // Parameters: key name, default value, filename for persistence (optional, use CONFIGURATION_FN for default), readonly, rebootRequired, restricted
     MicroOcpp::declareConfiguration<int>("ConfigureMaxCurrent", 16);
 
+    // Set MeterValuesSampledData to include Current.Import and Temperature in periodic meter values
+    // Note: declareConfiguration only sets the default; setString() actively updates the value
+    auto meterValuesSampledData = MicroOcpp::declareConfiguration<const char*>("MeterValuesSampledData", "");
+    meterValuesSampledData->setString("Energy.Active.Import.Register,Power.Active.Import,Current.Import,Temperature");
+
     OcppUnlockConnectorOnEVSideDisconnect = MicroOcpp::declareConfiguration<bool>("UnlockConnectorOnEVSideDisconnect", true);
 
     endTransaction(nullptr, "PowerLoss"); // If a transaction from previous power cycle is still running, abort it here
