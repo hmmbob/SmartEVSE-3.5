@@ -57,6 +57,7 @@ extern void receiveNodeStatus(uint8_t *buf, uint8_t NodeNr); //TODO move to modb
 extern void receiveNodeConfig(uint8_t *buf, uint8_t NodeNr); //TODO move to modbus.cpp?
 extern void ModbusRequestLoop();
 extern uint8_t ModbusRequest;
+extern void request_write_settings(void);
 
 
 #ifdef SMARTEVSE_VERSION //ESP32v3
@@ -616,7 +617,7 @@ void WriteItemValueResponse(void) {
 #if !defined(SMARTEVSE_VERSION) //CH32
         printf("@write_settings\n");
 #else
-        write_settings();
+        request_write_settings();
 #endif
     }
 
@@ -656,7 +657,7 @@ void WriteMultipleItemValueResponse(void) {
 #if !defined(SMARTEVSE_VERSION) //CH32
         printf("@write_settings\n");
 #else
-        write_settings();
+        request_write_settings();
 #endif
     }
 

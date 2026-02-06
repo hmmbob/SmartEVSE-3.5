@@ -1359,7 +1359,7 @@ void GLCDMenu(uint8_t Buttons) {
                 setChargeDelay(0);                                              // Clear ChargeDelay
                 setSolarStopTimer(0);                                           // Disable Solar Timer
                 GLCD();
-                write_settings();                                               // Write to eeprom
+                request_write_settings();                                       // Write to nvs
                 ButtonRelease = 2;                                              // Skip updating of the LCD 
                 PairingPin = "";                                                // Reset PairingPin
             }
