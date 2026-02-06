@@ -2501,7 +2501,10 @@ void ModbusRequestLoop() {
 
     static uint8_t PollEVNode = NR_EVSES;
     static uint16_t energytimer = 0;
+    static uint8_t NodeOfflineProbe = 1;
+    static bool probedThisCycle = false;
     uint8_t updated = 0;
+    uint8_t nodeNr;
 
     // Every 2 seconds, request measurements from modbus meters
         // Slaves all have ModbusRequest at 0 so they never enter here
@@ -2576,9 +2579,27 @@ void ModbusRequestLoop() {
             case 10:
             case 11:
             case 12:
+                // Request Node Status, skip offline nodes to save time in the loop.
+                // Probe One offline Node per cycle.
                 if (LoadBl == 1) {
-                    requestNodeStatus(ModbusRequest - 5u);                   // Master, Request Node 1-8 status
-                    break;
+                    if (ModbusRequest == 6) probedThisCycle = false;
+
+                    while (ModbusRequest <= 12) {
+                        nodeNr = ModbusRequest - 5u;
+                        if (Node[nodeNr].Online || (!probedThisCycle && nodeNr == NodeOfflineProbe)) {
+                            if (!Node[nodeNr].Online) {
+                                probedThisCycle = true;
+                                do { 
+                                    if (++NodeOfflineProbe >= NR_EVSES) NodeOfflineProbe = 1;
+                                } while (Node[NodeOfflineProbe].Online && NodeOfflineProbe != nodeNr);
+                                _LOG_D("Probing offline Node %u\n", nodeNr);
+                            }
+                            requestNodeStatus(nodeNr);
+                            break;
+                        }
+                        ModbusRequest++;
+                    }
+                    if (ModbusRequest <= 12) break;
                 }
                 ModbusRequest = 13;
                 // fall through

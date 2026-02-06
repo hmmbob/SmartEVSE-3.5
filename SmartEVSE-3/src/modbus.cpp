@@ -864,7 +864,7 @@ void ConfigureModbusMode(uint8_t newmode) {
             if (newmode != 255) MBserver.end();
             _LOG_A("ConfigureModbusMode2 task free ram: %u\n", uxTaskGetStackHighWaterMark( NULL ));
 
-            MBclient.setTimeout(85);                        // Set modbus timeout to 85ms. 15ms lower then modbusRequestloop time of 100ms.
+            MBclient.setTimeout(150);                       // Set modbus timeout to 150ms.
             MBclient.onDataHandler(&MBhandleData);
             MBclient.onErrorHandler(&MBhandleError);
             // Start ModbusRTU Master background task
