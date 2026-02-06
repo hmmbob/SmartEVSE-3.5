@@ -627,7 +627,11 @@ void WriteItemValueResponse(void) {
             ModbusException(MB.Address, MB.Function, MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE);
         } else {
             //ModbusWriteSingleResponse(MB.Address, MB.Register, MB.Value);
+#if !defined(SMARTEVSE_VERSION) //CH32
             ModbusSend8(MB.Address, 0x06, MB.Register, MB.Value);
+#else
+            response.add(MB.Address, MB.Function, (uint16_t)MB.Register, (uint16_t)MB.Value);
+#endif
         }
     }
 }
